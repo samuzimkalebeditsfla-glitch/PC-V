@@ -1,0 +1,110 @@
+name: PC Virtual RDP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pc-virtual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+
+      - name: Atualizar sistema
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+
+      - name: Instalar ambiente gráfico e RDP
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            xfce4 \
+            xfce4-goodies \
+            xrdp \
+            dbus-x11 \
+            curl
+
+      - name: Criar usuário do PC
+        run: |
+          sudo useradd -m -s /bin/bash virtual || true
+          echo 'virtual:Virtual123!' | sudo chpasswd
+          sudo usermod -aG sudo virtual
+
+      - name: Configurar XFCE para RDP
+        run: |
+          sudo bash -c 'cat > /home/virtual/.xsession <<EOF
+          startxfce4
+          EOF'
+
+          sudo chown virtual:virtual /home/virtual/.xsession
+          sudo chmod 644 /home/virtual/.xsession
+
+          sudo bash -c 'cat > /etc/xrdp/startwm.sh <<EOF
+          #!/bin/sh
+          export LANG=C.UTF-8
+          export LC_ALL=C.UTF-8
+          unset DBUS_SESSION_BUS_ADDRESS
+          unset XDG_RUNTIME_DIR
+          startxfce4
+          EOF'
+
+          sudo chmod +x /etc/xrdp/startwm.sh
+
+      - name: Iniciar servidor RDP
+        run: |
+          sudo systemctl enable xrdp
+          sudo systemctl restart xrdp
+          sleep 5
+          sudo systemctl --no-pager status xrdp || true
+
+      - name: Instalar Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Conectar PC ao Tailscale
+        env:
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+        run: |
+          sudo tailscale up \
+            --auth-key="${TS_AUTHKEY}" \
+            --hostname="github-pc-${GITHUB_RUN_ID}"
+
+          sleep 5
+
+      - name: Verificar RDP
+        run: |
+          echo "======================================"
+          echo "SERVIDOR RDP"
+          echo "======================================"
+          sudo ss -lntp | grep 3389 || true
+          echo ""
+
+      - name: Mostrar dados de conexão
+        run: |
+          echo "======================================"
+          echo "       PC VIRTUAL RDP"
+          echo "======================================"
+          echo ""
+          echo "IP TAILSCALE:"
+          sudo tailscale ip -4
+          echo ""
+          echo "USUÁRIO:"
+          echo "virtual"
+          echo ""
+          echo "SENHA:"
+          echo "Virtual123!"
+          echo ""
+          echo "PORTA:"
+          echo "3389"
+          echo ""
+          echo "NOME:"
+          echo "github-pc-${GITHUB_RUN_ID}"
+          echo ""
+          echo "======================================"
+
+      - name: Manter PC ligado
+        run: |
+          while true; do
+            echo "PC virtual ativo: $(date)"
+            sleep 60
+          done
