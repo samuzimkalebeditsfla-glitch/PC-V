@@ -1,0 +1,89 @@
+name: PC Virtual RDP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pc-virtual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Atualizar sistema
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+
+      - name: Instalar XFCE e XRDP
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            xfce4 \
+            xfce4-goodies \
+            xrdp \
+            xorgxrdp \
+            dbus-x11 \
+            dbus-user-session
+
+      - name: Criar usuário do PC
+        env:
+          PC_PASSWORD: ${{ secrets.PC_PASSWORD }}
+        run: |
+          sudo userdel -r virtual 2>/dev/null || true
+          sudo useradd -m -s /bin/bash virtual
+          echo "virtual:${PC_PASSWORD}" | sudo chpasswd
+          sudo usermod -aG sudo virtual
+          sudo passwd -u virtual
+
+      - name: Configurar XFCE para XRDP
+        run: |
+          sudo bash -c 'cat > /home/virtual/.xsession <<EOF
+          #!/bin/bash
+          export XDG_CURRENT_DESKTOP=XFCE
+          export XDG_CONFIG_DIRS=/etc/xdg/xdg-xfce:/etc/xdg/xdg-xubuntu:/etc/xdg
+          export XDG_DATA_DIRS=/usr/share/xfce4:/usr/local/share:/usr/share
+          exec startxfce4
+          EOF'
+
+          sudo chown virtual:virtual /home/virtual/.xsession
+          sudo chmod 755 /home/virtual/.xsession
+
+          sudo sed -i 's/^test -x/#test -x/' /etc/xrdp/startwm.sh
+          sudo sed -i 's/^exec/#exec/' /etc/xrdp/startwm.sh
+
+          sudo bash -c 'cat >> /etc/xrdp/startwm.sh <<EOF
+          export XDG_CURRENT_DESKTOP=XFCE
+          export XDG_CONFIG_DIRS=/etc/xdg/xdg-xfce:/etc/xdg
+          export XDG_DATA_DIRS=/usr/share/xfce4:/usr/share
+          exec startxfce4
+          EOF'
+
+          sudo systemctl enable xrdp
+          sudo systemctl restart xrdp
+
+      - name: Instalar Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:github-actions
+
+      - name: Verificar RDP
+        run: |
+          sudo systemctl --no-pager status xrdp || true
+          echo "Porta RDP:"
+          sudo ss -lntp | grep ':3389' || true
+
+      - name: Mostrar dados de conexão
+        run: |
+          echo "===== PC VIRTUAL ====="
+          echo "Usuário: virtual"
+          echo "Senha: configurada no Secret PC_PASSWORD"
+          echo "IP Tailscale:"
+          tailscale ip -4
+          echo "Porta RDP: 3389"
+          echo "======================"
+
+      - name: Manter PC ligado
+        run: |
+          echo "PC virtual está funcionando."
+          sleep 20800
