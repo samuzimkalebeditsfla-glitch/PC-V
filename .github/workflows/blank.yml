@@ -28,7 +28,7 @@ jobs:
         run: |
           sudo userdel -r virtual 2>/dev/null || true
           sudo useradd -m -s /bin/bash virtual
-          echo 'virtual:Virtual123!' | sudo chpasswd
+          echo "virtual:${{ secrets.PC_PASSWORD }}" | sudo chpasswd
           sudo usermod -aG sudo virtual
           sudo passwd -u virtual
           
