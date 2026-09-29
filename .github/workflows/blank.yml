@@ -26,9 +26,13 @@ jobs:
 
       - name: Criar usuário do PC
         run: |
-          sudo useradd -m -s /bin/bash virtual || true
+          sudo userdel -r virtual 2>/dev/null || true
+          sudo useradd -m -s /bin/bash virtual
           echo 'virtual:Virtual123!' | sudo chpasswd
           sudo usermod -aG sudo virtual
+          sudo passwd -u virtual
+          
+          
 
       - name: Configurar XFCE para RDP
         run: |
